@@ -22,13 +22,14 @@ Deploy the generated `dist/` directory to any static web host. The JSON and font
 
 ## Reading
 
+- **English / العربية:** switch interface language from the header. Arabic uses a full RTL layout, translated controls and dialogs, and Arabic surah names. Your language choice is saved in this browser.
 - All 114 surahs and 6,214 numbered ayahs, using the supplied Qālūn narration and Last Madani numbering.
 - **By surah / By page:** switch between full chapters and the edition's 604 pages. Page view follows source line breaks, with a header and basmalah at each surah opening (except At-Tawbah, which has no opening basmalah).
-- Turn pages with the previous/next buttons above or below the text, or enter a page number (1–604) and press Enter or Go. Page links such as `#page/604` open directly in page view.
+- Turn pages with the previous/next buttons above or below the text, or enter a page number (1–604) and press Enter or Go. Page numbers and search references accept Western, Arabic-Indic, and Eastern Arabic-Indic digits. Page links such as `#page/604` open directly in page view.
 - Continuous reading and ayah-by-ayah layouts, adjustable Arabic text size, and light/dark themes.
 - Filter surahs by English or Arabic name, meaning, or number. The header search (keyboard shortcut `/`) also searches Arabic Quran text and references such as `112:2`.
 - Select an ayah to bookmark it, copy its text, or copy a direct link.
-- Bookmarks, reading position, layout, font size, and theme persist in this browser's local storage. They do not sync across browsers or devices.
+- Bookmarks, reading position, layout, font size, theme, and language persist in this browser's local storage. They do not sync across browsers or devices.
 - Mobile surah navigation is available from the menu button.
 
 ## Text integrity and sources
@@ -50,4 +51,4 @@ npm test
 npm run build
 ```
 
-Tests check completeness, Qālūn numbering, basmalah handling, Arabic search normalization, and font coverage for every Quran character in the source. Page tests reconstruct all 6,214 ayahs to verify text preservation, chapter openings, cross-page continuations, and page-link validation. Browser checks cover both display options, page navigation, search, bookmarks and persistence, reading settings, deep links, mobile navigation, and responsive overflow.
+Tests check completeness, Qālūn numbering, basmalah handling, Arabic search normalization, and font coverage for every Quran character in the source. Page tests reconstruct all 6,214 ayahs to verify text preservation, chapter openings, cross-page continuations, and page-link validation. Browser checks cover both display options, page navigation, search, bookmarks and persistence, reading settings, deep links, mobile navigation, language switching and persistence, RTL layout and arrows, Arabic-digit navigation, and responsive overflow.

@@ -1,3 +1,5 @@
+import { normalizeDigits } from './i18n.js';
+
 // Names are navigation labels. Quran text and Qālūn ayah counts come only from the supplied JSON.
 const names = `Al-Fatihah|الفاتحة|The Opening
 Al-Baqarah|البقرة|The Cow
@@ -121,7 +123,7 @@ export const surahNames = names.split('\n').map((row, i) => {
 
 // Only normalize the search index; never normalize the displayed Quran text.
 export function normalizeSearch(text) {
-  return text.normalize('NFKD').replace(/[\u0870-\u0882]/g, 'ا')
+  return normalizeDigits(text).normalize('NFKD').replace(/[\u0870-\u0882]/g, 'ا')
     .replace(/[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed\u0887-\u0888\u08d3-\u08ff]/g, '')
     .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
     .replace(/ـ/g, '').replace(/[’'ʿʾ-]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
