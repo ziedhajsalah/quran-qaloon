@@ -20,6 +20,14 @@ npm run preview
 
 Deploy the generated `dist/` directory to any static web host. The JSON and fonts are bundled locally; reading does not require a Quran API or Google Fonts.
 
+## GitHub Pages
+
+Published at [ziedhajsalah.github.io/quran-qaloon](https://ziedhajsalah.github.io/quran-qaloon/).
+
+The deployment workflow in `.github/workflows/deploy.yml` runs the tests, builds the app, and publishes `dist/` whenever `main` is pushed. It can also be started manually from the repository's Actions tab. GitHub Pages must use **GitHub Actions** as its source in **Settings → Pages**.
+
+The Vite base path is `/quran-qaloon/`, including for local development and preview. Open the full URL printed by Vite. If deploying to a different repository path or a custom domain, update `base` in `vite.config.js`.
+
 ## Reading
 
 - **English / العربية:** switch interface language from the header. Arabic uses a full RTL layout, translated controls and dialogs, and Arabic surah names. Your language choice is saved in this browser.
