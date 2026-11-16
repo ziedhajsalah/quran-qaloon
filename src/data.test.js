@@ -1,10 +1,59 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { makeSurahs, normalizeSearch, displayText, parseReference } from './data.js';
+import { makeSurahs, makePages, pageAyahs, normalizeSearch, displayText, parseReference, parsePageReference } from './data.js';
 
 const data = JSON.parse(readFileSync(new URL('../quran-qalun-rasm_uthmani.json', import.meta.url), 'utf8'));
 const surahs = makeSurahs(data.ayahs);
+const pages = makePages(data.ayahs);
+
+test('page layout preserves every ayah, letter, and mark across all 604 pages', () => {
+  assert.deepEqual(pages.map(p => p.number), Array.from({ length: 604 }, (_, i) => i + 1));
+  const reconstructed = new Map();
+  let markers = 0;
+  for (const page of pages) {
+    for (const section of page.sections) {
+      for (const line of section.lines) {
+        assert.ok(line.number >= 1 && line.number <= 15);
+        for (const fragment of line.fragments) {
+          const key = `${fragment.surah}:${fragment.ayah}`;
+          reconstructed.set(key, [...(reconstructed.get(key) || []), fragment.text]);
+          if (fragment.end) markers++;
+        }
+      }
+    }
+  }
+  assert.equal(reconstructed.size, 6214);
+  assert.equal(markers, 6214);
+  for (const a of data.ayahs.filter(a => a.ayah > 0)) {
+    assert.equal(reconstructed.get(`${a.surah}:${a.ayah}`).join(' ').replace(/\s+/g, ' '), displayText(a.text).replace(/\s+/g, ' '), `Text preserved for ${a.surah}:${a.ayah}`);
+  }
+});
+
+test('page sections include each surah opening once, including multiple surahs on one page', () => {
+  const openings = pages.flatMap(p => p.sections.filter(s => s.startsSurah).map(s => s.surah));
+  assert.deepEqual(openings, Array.from({ length: 114 }, (_, i) => i + 1));
+  assert.deepEqual(pages[603].sections.map(s => s.surah), [112, 113, 114]);
+  assert.deepEqual(pages[105].sections.map(s => [s.surah, s.startsSurah]), [[4, false], [5, true]]);
+  assert.deepEqual(pages[0].sections[0].lines.map(l => l.number), [2, 3, 4, 5, 6, 7]);
+});
+
+test('ayahs spanning pages continue on the next page, with the marker only at their end', () => {
+  for (const [surah, ayah, page] of [[4, 44, 85], [20, 86, 317], [24, 36, 354], [24, 42, 355]]) {
+    const fragments = number => pages[number - 1].sections.flatMap(s => s.lines.flatMap(l => l.fragments)).filter(f => f.surah === surah && f.ayah === ayah);
+    assert.ok(fragments(page).length > 0);
+    assert.ok(fragments(page).every(f => !f.end));
+    assert.ok(fragments(page + 1).at(-1).end);
+    assert.ok(pageAyahs(pages[page]).some(a => a.surah === surah && a.ayah === ayah));
+  }
+});
+
+test('page deep links validate page numbers and references, including continued ayahs', () => {
+  assert.deepEqual(parsePageReference('#page/604', pages), { page: 604, surah: 112, ayah: 1 });
+  assert.deepEqual(parsePageReference('#page/604/114:6', pages), { page: 604, surah: 114, ayah: 6 });
+  assert.deepEqual(parsePageReference('#page/86/4:44', pages), { page: 86, surah: 4, ayah: 44 });
+  for (const ref of ['#page/0', '#page/605', '#page/1.5', '#page/604/1:1', '#page/604/114:7', '#page/85/4:45', '#page/1/1:0']) assert.equal(parsePageReference(ref, pages), null);
+});
 
 test('the full supplied Qālūn Quran is available with its own numbering', () => {
   assert.equal(surahs.length, 114);
@@ -28,6 +77,7 @@ test('Arabic search matches Qālūn letters and marks without mutating the sourc
   assert.ok(normalizeSearch(source).includes(normalizeSearch('الحمد لله')));
   const formatted = displayText(surahs[0].ayahs[1].text);
   assert.ok(!formatted.includes('\\n'));
+  assert.ok(!formatted.includes('\n'));
   assert.ok(!formatted.includes('(2)'));
   assert.equal(displayText('نَصٌّ (داخل) (٢) (123)'), 'نَصٌّ (داخل) (٢)');
   assert.equal(surahs[0].ayahs[0].text, source);

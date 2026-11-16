@@ -33,3 +33,44 @@ dialog{border:1px solid var(--line);border-radius:12px;background:var(--surface)
 .quran-content.short-surah.reading{text-align:center}
 @media(max-width:760px){.quran-content.short-surah{line-height:2.4}.welcome .eyebrow{font-size:7px;letter-spacing:.7px}}
 @media(max-width:390px){.welcome .eyebrow{font-size:6px;letter-spacing:.7px}}
+
+.reader-navigation{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:15px 24px;border-bottom:1px solid var(--line);background:var(--surface);flex-wrap:wrap}
+.display-mode-switch{display:flex;gap:5px;background:var(--hover);padding:4px;border-radius:6px}
+.display-mode-switch button{display:flex;align-items:center;gap:7px;padding:8px 13px;font-size:11px;border-radius:4px;color:var(--muted);white-space:nowrap}
+.display-mode-switch button.active{background:var(--green);color:var(--surface)}
+[data-theme='dark'] .display-mode-switch button.active{color:var(--bg)}
+.display-mode-switch .icon{width:15px;height:15px}
+.surah-mode-caption{font-size:9px;color:var(--muted)}
+.page-navigation{display:flex;align-items:center;gap:8px}
+.page-navigation .icon-button{width:28px;height:30px}
+.page-navigation .icon{width:15px;height:15px}
+.page-back .icon{transform:rotate(180deg)}
+#page-form{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--muted)}
+#page-number{width:51px;height:31px;padding:5px;border:1px solid var(--line);border-radius:4px;text-align:center;background:var(--bg);color:var(--ink);font-size:11px;appearance:textfield;-moz-appearance:textfield}
+#page-number::-webkit-inner-spin-button,#page-number::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.page-go{display:flex;align-items:center;gap:5px;border-radius:4px;padding:7px 9px;color:var(--green);font-size:10px;background:var(--mint);margin-left:3px}
+.page-go .icon{width:12px;height:12px}
+.page-layout-label{font-size:9px;color:var(--muted);letter-spacing:.2px}
+.page-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:26px 39px 24px;border-bottom:1px solid var(--line);background:var(--sidebar)}
+.page-heading h2{font-family:'Cormorant Garamond',serif;font-size:36px;font-weight:400;line-height:1.2;margin:3px 0 5px}
+.page-heading p{font-size:10px;color:var(--muted)}
+.page-heading-number{font-family:'Qaloun',serif;color:var(--gold);font-size:29px;min-width:55px;height:62px;display:grid;place-items:center;border:1px solid var(--line);border-radius:28px 28px 4px 4px;background:var(--surface);padding:0 8px}
+.page-content{padding-bottom:10px;unicode-bidi:isolate}
+.page-section + .page-section{margin-top:22px;border-top:1px solid var(--line)}
+.page-surah-header{padding-top:26px}
+.page-surah-header .surah-heading{scroll-margin-top:calc(var(--header-height) + 24px)}
+.page-surah-header .surah-heading h2{font-size:30px}
+.page-surah-header .surah-title-arabic{font-size:34px}
+.page-surah-header .surah-title-number{width:41px;height:49px;font-size:21px}
+.page-surah-header .bismillah{padding-top:22px;padding-bottom:13px}
+.page-continuation{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 39px;padding:18px 0 9px;color:var(--green);font-size:11px}
+.page-continuation small{font-size:9px;color:var(--muted);margin-left:8px}
+.page-continuation .surah-arabic{font-size:24px}
+.page-lines{font-family:'Qaloun',serif;font-size:var(--quran-size);line-height:2.3;padding:4px 39px 14px;color:var(--ink);unicode-bidi:isolate}
+.mushaf-line{text-align:center;text-align-last:center;min-height:1.4em}
+.mushaf-line:last-child{text-align-last:center}
+.pagination-page-number{font-size:13px;color:var(--green)}
+.pagination-page-number>span{font-size:10px;color:var(--muted);margin-left:4px}
+@media(max-width:1190px){.reader-navigation{padding:13px 17px;gap:12px}.display-mode-switch button{padding:7px 10px;font-size:10px}.surah-mode-caption{font-size:8px}.page-navigation{gap:4px}.page-lines{padding-left:28px;padding-right:28px}.page-heading{padding-left:28px;padding-right:28px}.page-continuation{margin-left:28px;margin-right:28px}}
+@media(max-width:760px){.reader-navigation{padding:12px 13px;gap:12px}.display-mode-switch button{font-size:11px;padding:8px 13px}.surah-mode-caption{display:none}.page-navigation{width:100%;justify-content:space-between;border-top:1px solid var(--line);padding-top:11px}.page-navigation .icon-button{width:32px;height:32px}#page-form{font-size:11px;gap:8px}#page-number{width:55px;height:33px;font-size:12px}.page-go{font-size:11px;padding:8px 11px;margin-left:5px}.page-heading{padding:22px 24px}.page-heading h2{font-size:32px}.page-heading p{font-size:9px;line-height:1.7}.page-heading .eyebrow{font-size:7px}.page-heading-number{font-size:26px;min-width:47px;height:56px}.page-lines{font-size:calc(var(--quran-size) * .9);padding:5px 24px 12px;line-height:2.45}.mushaf-line{text-align:center;text-align-last:center}.page-continuation{margin-left:24px;margin-right:24px;font-size:10px}.page-continuation small{font-size:8px}.page-surah-header .surah-heading h2{font-size:28px}.page-surah-header .surah-title-arabic{font-size:31px}.page-surah-header .surah-title-number{width:35px;height:45px;font-size:20px}.page-surah-header .bismillah{font-size:28px;padding-top:23px;padding-bottom:9px}.page-layout-label{font-size:8px}.pagination-page-number{font-size:11px}.pagination-page-number>span{font-size:8px}}
+@media(max-width:390px){.site-header{gap:10px}.brand{gap:8px}.brand-symbol{width:32px;height:32px}.brand-name{font-size:27px;white-space:nowrap}.brand-name>span{font-size:5px;letter-spacing:1px}.main-nav [data-action='about']{display:none}.header-tools>.icon-button{width:27px}.reader-navigation{padding:11px 10px}#page-form>span{white-space:nowrap}#page-number{min-width:43px}.page-go{font-size:10px;padding:8px}.page-lines{padding-left:20px;padding-right:20px}.page-heading{padding-left:20px;padding-right:20px}.page-continuation{margin-left:20px;margin-right:20px}.page-surah-header .surah-heading h2{font-size:26px}.page-surah-header .bismillah{font-size:26px}}

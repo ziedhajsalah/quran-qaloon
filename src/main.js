@@ -1,6 +1,6 @@
 import './style.css';
 import dataUrl from '../quran-qalun-rasm_uthmani.json?url';
-import { makeSurahs, displayText, normalizeSearch, parseReference } from './data.js';
+import { makeSurahs, makePages, pageAyahs, displayText, normalizeSearch, parseReference, parsePageReference } from './data.js';
 
 const paths = {
   book: '<path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1Z"/><path d="M12 5v15"/>',
@@ -25,7 +25,8 @@ const icon = (name, cls = '') => `<svg class="icon ${cls}" width="20" height="20
 const ornament = (cls = '') => `<svg class="ornament ${cls}" viewBox="0 0 200 200" fill="none" aria-hidden="true"><g stroke="currentColor" stroke-width=".65"><path d="M100 8 127 34 165 35 166 73 192 100 166 127 165 165 127 166 100 192 73 166 35 165 34 127 8 100 34 73 35 35 73 34Z"/><path d="M100 23 122 47 155 45 153 78 177 100 153 122 155 155 122 153 100 177 78 153 45 155 47 122 23 100 47 78 45 45 78 47Z"/><rect x="48" y="48" width="104" height="104"/><rect x="48" y="48" width="104" height="104" transform="rotate(45 100 100)"/><circle cx="100" cy="100" r="40"/><circle cx="100" cy="100" r="34"/><path d="m100 48 15 37 37 15-37 15-15 37-15-37-37-15 37-15Z"/><path d="M100 8v40m0 104v40M8 100h40m104 0h40M35 35l37 37m56 56 37 37M35 165l37-37m56-56 37-37"/></g><circle cx="100" cy="100" r="4" fill="currentColor"/></svg>`;
 const escape = str => String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const arabicNumber = n => String(n).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[d]);
-function ayahMarkup(ayah) {
+function ayahMarkup(ayah, end = true) {
+  if (!end) return escape(displayText(ayah.text));
   const words = displayText(ayah.text).split(' ');
   const lastWord = words.pop();
   return `${escape(words.join(' '))}${words.length ? ' ' : ''}<span class="ayah-ending">${escape(lastWord)} <span class="ayah-marker" aria-hidden="true">${arabicNumber(ayah.ayah)}</span></span>`;
@@ -35,6 +36,7 @@ let stored = {};
 try { stored = JSON.parse(localStorage.getItem(storageKey)) || {}; } catch { /* A fresh session is always available. */ }
 const state = {
   surah: 1, ayah: 1, view: stored.view === 'verses' ? 'verses' : 'reading',
+  mode: stored.mode === 'page' ? 'page' : 'surah', page: 1,
   fontSize: [28, 32, 36, 40, 44, 48, 52].includes(stored.fontSize) ? stored.fontSize : 36,
   theme: stored.theme === 'dark' ? 'dark' : 'light',
   bookmarks: Array.isArray(stored.bookmarks) ? stored.bookmarks.filter(b => b && Number.isInteger(b.surah) && Number.isInteger(b.ayah)) : [],
@@ -43,11 +45,12 @@ const state = {
 };
 document.documentElement.dataset.theme = state.theme;
 document.documentElement.style.setProperty('--quran-size', `${state.fontSize}px`);
-let surahs = [], data, searchIndex = [], observer, toastTimeout;
+let surahs = [], pages = [], data, searchIndex = [], observer, toastTimeout;
+let trackingReading = false;
 const $ = selector => document.querySelector(selector);
 const persist = () => {
   try {
-    localStorage.setItem(storageKey, JSON.stringify({ view: state.view, fontSize: state.fontSize, theme: state.theme, bookmarks: state.bookmarks, lastRead: state.lastRead }));
+    localStorage.setItem(storageKey, JSON.stringify({ mode: state.mode, view: state.view, fontSize: state.fontSize, theme: state.theme, bookmarks: state.bookmarks, lastRead: state.lastRead }));
   } catch { /* Reading still works if browser storage is unavailable. */ }
 };
 const isBookmarked = (surah, ayah) => state.bookmarks.some(b => b.surah === surah && b.ayah === ayah);
@@ -65,17 +68,25 @@ async function init() {
     if (!response.ok) throw new Error('The Quran file could not be loaded.');
     data = await response.json();
     surahs = makeSurahs(data.ayahs);
+    pages = makePages(data.ayahs);
     state.bookmarks = state.bookmarks.filter(b => surahs[b.surah - 1]?.ayahs.some(a => a.ayah === b.ayah));
     if (!surahs[state.lastRead.surah - 1]?.ayahs.some(a => a.ayah === state.lastRead.ayah)) state.lastRead = { surah: 1, ayah: 1 };
-    const reference = parseReference(location.hash, surahs) || state.lastRead;
+    const pageReference = parsePageReference(location.hash, pages);
+    const surahReference = parseReference(location.hash, surahs);
+    if (pageReference) state.mode = 'page';
+    else if (surahReference) state.mode = 'surah';
+    const reference = pageReference || surahReference || state.lastRead;
     state.surah = reference.surah;
     state.ayah = reference.ayah;
+    state.page = surahs[state.surah - 1].ayahs.find(a => a.ayah === state.ayah).page;
+    if (pages[reference.page - 1] && pageAyahs(pages[reference.page - 1]).some(a => a.surah === state.surah && a.ayah === state.ayah)) state.page = reference.page;
     searchIndex = data.ayahs.filter(a => a.ayah > 0).map(a => ({ ...a, normalized: normalizeSearch(displayText(a.text)) }));
     renderApp();
     renderSidebar();
     renderReader();
     bindEvents();
-    if (reference.ayah > 1) requestAnimationFrame(() => jumpToAyah(reference.ayah, false));
+    const firstOnPage = pageAyahs(pages[state.page - 1])[0];
+    if ((state.mode === 'surah' && reference.ayah > 1) || (state.mode === 'page' && (reference.surah !== firstOnPage.surah || reference.ayah !== firstOnPage.ayah))) requestAnimationFrame(() => jumpToAyah(reference.ayah, false, reference.surah));
   } catch (error) {
     $('#app').innerHTML = `<main class="error-state">${icon('book')}<h1>A moment, please.</h1><p>We couldn’t open the Quran data. Please try again.</p><button class="primary-button" id="retry">Try again ${icon('arrow')}</button></main>`;
     $('#retry').addEventListener('click', init);
@@ -105,7 +116,8 @@ function renderApp() {
         <section class="welcome" aria-labelledby="welcome-title"><div class="welcome-copy"><div class="eyebrow"><span class="tiny-star">✦</span> IN THE NAME OF ALLAH, THE MOST MERCIFUL</div><h1 id="welcome-title">Read. Reflect. <em>Return.</em></h1><p>A little stillness. A deeper connection.</p><span class="edition-label"><span></span> Qālūn ʿan Nāfiʿ <i>·</i> Uthmani script</span></div><div class="welcome-art">${ornament()}<span lang="ar" dir="rtl">القرآن الكريم</span></div></section>
         <div class="reading-context"><div class="context-label">${icon('book')}<span>THE HOLY QURAN</span><span class="context-line"></span><span id="chapter-context"></span></div><button class="resume-button" data-action="resume">${icon('bookmark')}<span id="resume-label"></span>${icon('arrow')}</button></div>
         <section class="reader" id="reader" aria-label="Quran reader" tabindex="-1">
-          <div class="reader-toolbar"><div class="view-switch" role="group" aria-label="Reading layout"><button data-view="reading" aria-label="Continuous reading" title="Continuous reading">${icon('book')}<span>Reading</span></button><button data-view="verses" aria-label="Ayah by ayah" title="Ayah by ayah">${icon('list')}<span>Ayah by ayah</span></button></div><div class="reader-controls"><label class="jump-label" for="ayah-select">Go to ayah <select id="ayah-select" aria-label="Go to ayah"></select>${icon('down')}</label><span class="toolbar-divider"></span><div class="font-controls"><button class="icon-button" data-action="smaller" aria-label="Decrease Arabic text size">A<span>−</span></button><span class="font-size" id="font-size"></span><button class="icon-button" data-action="larger" aria-label="Increase Arabic text size">A<span>+</span></button></div></div></div>
+          <div class="reader-navigation"><div class="display-mode-switch" role="group" aria-label="Display Quran by"><button data-mode="surah">${icon('book')} By surah</button><button data-mode="page">${icon('list')} By page</button></div><div class="page-navigation" id="page-navigation" hidden><button class="icon-button page-back" data-action="previous-page" aria-label="Previous page">${icon('chevron')}</button><form id="page-form"><label for="page-number">Page</label><input id="page-number" type="number" min="1" max="${pages.length}" step="1" inputmode="numeric" required aria-label="Page number"/><span>of ${pages.length}</span><button type="submit" class="page-go">Go ${icon('arrow')}</button></form><button class="icon-button" data-action="next-page" aria-label="Next page">${icon('chevron')}</button></div><span class="surah-mode-caption" id="surah-mode-caption">114 surahs. One place to return.</span></div>
+          <div class="reader-toolbar"><div class="view-switch" id="surah-layout" role="group" aria-label="Reading layout"><button data-view="reading" aria-label="Continuous reading" title="Continuous reading">${icon('book')}<span>Reading</span></button><button data-view="verses" aria-label="Ayah by ayah" title="Ayah by ayah">${icon('list')}<span>Ayah by ayah</span></button></div><span id="page-layout-label" class="page-layout-label" hidden></span><div class="reader-controls"><label class="jump-label" id="ayah-jump" for="ayah-select">Go to ayah <select id="ayah-select" aria-label="Go to ayah"></select>${icon('down')}</label><span class="toolbar-divider" id="ayah-jump-divider"></span><div class="font-controls"><button class="icon-button" data-action="smaller" aria-label="Decrease Arabic text size">A<span>−</span></button><span class="font-size" id="font-size"></span><button class="icon-button" data-action="larger" aria-label="Increase Arabic text size">A<span>+</span></button></div></div></div>
           <div id="surah-header" class="surah-header"></div>
           <div id="quran-content" class="quran-content" lang="ar" dir="rtl"></div>
           <div class="reader-colophon"><span></span>${ornament()}<span></span></div>
@@ -117,7 +129,7 @@ function renderApp() {
     </div>
     <dialog id="search-dialog" class="search-dialog" aria-labelledby="search-title"><div class="dialog-header"><div><span class="eyebrow">EXPLORE THE QURAN</span><h2 id="search-title">Seek, and find.</h2></div><button class="icon-button" data-close="search-dialog" aria-label="Close search">${icon('close')}</button></div><label class="dialog-search">${icon('search')}<input id="quran-search" type="search" placeholder="Search a surah, Arabic text, or 2:255" aria-label="Search Quran" autocomplete="off"/></label><div id="search-results" class="search-results"></div></dialog>
     <dialog id="bookmarks-dialog" aria-labelledby="bookmarks-title"><div class="dialog-header"><div><span class="eyebrow">KEEP WHAT MOVES YOU</span><h2 id="bookmarks-title">Your bookmarks</h2></div><button class="icon-button" data-close="bookmarks-dialog" aria-label="Close bookmarks">${icon('close')}</button></div><div id="bookmarks-content"></div></dialog>
-    <dialog id="about-dialog" class="about-dialog" aria-labelledby="about-title"><div class="dialog-header"><div><span class="eyebrow">A SPACE FOR THE QURAN</span><h2 id="about-title">Welcome to Qaloon.</h2></div><button class="icon-button" data-close="about-dialog" aria-label="Close about">${icon('close')}</button></div><p>A quiet companion for reading, reflecting, and returning to the Holy Quran.</p><div class="about-stats"><div><strong>114</strong><span>Surahs</span></div><div><strong>${data.meta.edition.ayah_count.toLocaleString()}</strong><span>Numbered ayahs</span></div><div><strong>604</strong><span>Source pages</span></div></div><h3>The text you’re reading</h3><p>Qālūn ʿan Nāfiʿ al-Madanī, in Uthmani script, with the Last Madani ayah numbering. Ayah references in this app belong to this narration and numbering system.</p><p>The Quran text is loaded from the supplied <code>quran-qalun-rasm_uthmani.json</code>, sourced from <a href="https://text.quran.ws/" target="_blank" rel="noreferrer">Quran.ws</a> and the King Fahd Glorious Quran Printing Complex’s Uthmanic Qaloun v3.0 release. It uses the matching Qālūn font.</p><h3>Make yourself at home</h3><p>Switch between continuous reading and individual ayahs. Select any ayah to save it, copy it, or share a link. Your place, bookmarks, text size, and theme are saved in this browser.</p><p class="license-note">${escape(data.meta.license)} Font and text rights remain with their respective owners. <a href="https://fonts.qurancomplex.gov.sa/qaloun-reading/" target="_blank" rel="noreferrer">Original publisher ${icon('arrow')}</a></p></dialog>
+    <dialog id="about-dialog" class="about-dialog" aria-labelledby="about-title"><div class="dialog-header"><div><span class="eyebrow">A SPACE FOR THE QURAN</span><h2 id="about-title">Welcome to Qaloon.</h2></div><button class="icon-button" data-close="about-dialog" aria-label="Close about">${icon('close')}</button></div><p>A quiet companion for reading, reflecting, and returning to the Holy Quran.</p><div class="about-stats"><div><strong>114</strong><span>Surahs</span></div><div><strong>${data.meta.edition.ayah_count.toLocaleString()}</strong><span>Numbered ayahs</span></div><div><strong>604</strong><span>Source pages</span></div></div><h3>The text you’re reading</h3><p>Qālūn ʿan Nāfiʿ al-Madanī, in Uthmani script, with the Last Madani ayah numbering. Ayah references in this app belong to this narration and numbering system.</p><p>The Quran text is loaded from the supplied <code>quran-qalun-rasm_uthmani.json</code>, sourced from <a href="https://text.quran.ws/" target="_blank" rel="noreferrer">Quran.ws</a> and the King Fahd Glorious Quran Printing Complex’s Uthmanic Qaloun v3.0 release. It uses the matching Qālūn font.</p><h3>Make yourself at home</h3><p>Read by surah or by page. In page view, follow the original lines and use the arrows or enter a page number to turn pages. Surah headers appear at each chapter opening. In surah view, choose continuous reading or individual ayahs. Select any ayah to save it, copy it, or share a link. Your place, bookmarks, text size, and theme are saved in this browser.</p><p class="license-note">${escape(data.meta.license)} Font and text rights remain with their respective owners. <a href="https://fonts.qurancomplex.gov.sa/qaloun-reading/" target="_blank" rel="noreferrer">Original publisher ${icon('arrow')}</a></p></dialog>
     <div class="ayah-actions" id="ayah-actions" role="region" aria-label="Selected ayah actions" hidden><span id="selected-reference"></span><button data-action="save-ayah" id="save-ayah"></button><button data-action="copy-ayah">${icon('copy')}<span>Copy</span></button><button data-action="share-ayah">${icon('link')}<span>Link</span></button><button class="icon-button" data-action="deselect" aria-label="Close ayah actions">${icon('close')}</button></div>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>`;
   updateResumeLabel();
@@ -131,19 +143,75 @@ function renderSidebar() {
 
 function renderReader() {
   observer?.disconnect();
+  trackingReading = false;
   const s = surahs[state.surah - 1];
-  document.title = `${s.name} — Qaloon`;
-  $('#chapter-context').textContent = s.name;
-  $('#surah-header').innerHTML = `<div class="surah-heading"><div class="surah-title-number">${String(s.id).padStart(2, '0')}</div><div><span class="eyebrow">SURAH ${String(s.id).padStart(2, '0')}</span><h2>${escape(s.name)}</h2><p>${escape(s.meaning)} <span>·</span> ${s.count} ayahs</p></div><div class="surah-title-arabic" lang="ar" dir="rtl"><span>سُورَةُ</span>${s.arabic}</div></div>${s.id !== 9 ? `<div class="bismillah" lang="ar" dir="rtl">${escape(displayText(data.ayahs.find(a => a.surah === 1 && a.ayah === 0).text))}</div>` : '<div class="no-bismillah"></div>'}`;
-  $('#quran-content').className = `quran-content ${state.view} ${s.count < 12 ? 'short-surah' : ''}`;
-  $('#quran-content').innerHTML = s.ayahs.map(a => `<${state.view === 'reading' ? 'span' : 'div'} class="ayah ${isBookmarked(s.id, a.ayah) ? 'bookmarked' : ''}" id="ayah-${a.ayah}" data-ayah="${a.ayah}" role="button" tabindex="0" aria-label="${escape(s.name)}, ayah ${a.ayah}: ${escape(displayText(a.text))}${isBookmarked(s.id, a.ayah) ? ', bookmarked' : ''}" aria-pressed="false">${state.view === 'verses' ? `<span class="verse-reference" dir="ltr">${s.id}:${a.ayah}${isBookmarked(s.id, a.ayah) ? icon('bookmark') : ''}</span><span class="verse-text">` : ''}${ayahMarkup(a)}${state.view === 'verses' ? '</span>' : ''}</${state.view === 'reading' ? 'span' : 'div'}> `).join('');
+  const byPage = state.mode === 'page';
+  $('#reader').dataset.mode = state.mode;
+  document.querySelectorAll('button[data-mode]').forEach(button => {
+    button.classList.toggle('active', button.dataset.mode === state.mode);
+    button.setAttribute('aria-pressed', String(button.dataset.mode === state.mode));
+  });
+  $('#page-navigation').hidden = !byPage;
+  $('#surah-mode-caption').hidden = byPage;
+  $('#surah-layout').hidden = byPage;
+  $('#page-layout-label').hidden = !byPage;
+  $('#ayah-jump').hidden = byPage;
+  $('#ayah-jump-divider').hidden = byPage;
+  if (byPage) renderPage();
+  else {
+    document.title = `${s.name} — Qaloon`;
+    $('#chapter-context').textContent = s.name;
+    $('#surah-header').className = 'surah-header';
+    $('#surah-header').innerHTML = surahHeader(s);
+    $('#quran-content').className = `quran-content ${state.view} ${s.count < 12 ? 'short-surah' : ''}`;
+    $('#quran-content').innerHTML = s.ayahs.map(a => ayahElement(a, { verse: state.view === 'verses' })).join(' ');
+    $('#page-context').textContent = `Surah ${s.id} of 114`;
+    $('#chapter-pagination').setAttribute('aria-label', 'Chapter navigation');
+    $('#chapter-pagination').innerHTML = `<button class="chapter-link previous" data-go="${s.id - 1}" ${s.id === 1 ? 'disabled' : ''}>${icon('arrow')}<span><small>PREVIOUS SURAH</small><strong>${s.id > 1 ? escape(surahs[s.id - 2].name) : 'Beginning of the Quran'}</strong></span></button><span class="pagination-ornament">✧</span><button class="chapter-link next" data-go="${s.id + 1}" ${s.id === 114 ? 'disabled' : ''}><span><small>NEXT SURAH</small><strong>${s.id < 114 ? escape(surahs[s.id].name) : 'End of the Quran'}</strong></span>${icon('arrow')}</button>`;
+  }
   $('#ayah-select').innerHTML = s.ayahs.map(a => `<option value="${a.ayah}" ${a.ayah === state.ayah ? 'selected' : ''}>${a.ayah}</option>`).join('');
-  $('#page-context').textContent = `Surah ${s.id} of 114`;
   document.querySelectorAll('[data-view]').forEach(button => { button.classList.toggle('active', button.dataset.view === state.view); button.setAttribute('aria-pressed', String(button.dataset.view === state.view)); });
   updateFontControls();
-  $('#chapter-pagination').innerHTML = `<button class="chapter-link previous" data-go="${s.id - 1}" ${s.id === 1 ? 'disabled' : ''}>${icon('arrow')}<span><small>PREVIOUS SURAH</small><strong>${s.id > 1 ? escape(surahs[s.id - 2].name) : 'Beginning of the Quran'}</strong></span></button><span class="pagination-ornament">✧</span><button class="chapter-link next" data-go="${s.id + 1}" ${s.id === 114 ? 'disabled' : ''}><span><small>NEXT SURAH</small><strong>${s.id < 114 ? escape(surahs[s.id].name) : 'End of the Quran'}</strong></span>${icon('arrow')}</button>`;
   deselectAyah();
   requestAnimationFrame(observeReading);
+}
+
+function surahHeader(s) {
+  const basmalah = data.ayahs.find(a => a.surah === 1 && a.ayah === 0);
+  return `<div class="surah-heading" data-surah-header="${s.id}" dir="ltr" lang="en"><div class="surah-title-number">${String(s.id).padStart(2, '0')}</div><div><span class="eyebrow">SURAH ${String(s.id).padStart(2, '0')}</span><h2>${escape(s.name)}</h2><p>${escape(s.meaning)} <span>·</span> ${s.count} ayahs</p></div><div class="surah-title-arabic" lang="ar" dir="rtl"><span>سُورَةُ</span>${s.arabic}</div></div>${s.id !== 9 ? `<div class="bismillah" lang="ar" dir="rtl">${escape(displayText(basmalah.text))}</div>` : '<div class="no-bismillah"></div>'}`;
+}
+
+function ayahElement(a, { verse = false, end = true, id = true } = {}) {
+  const s = surahs[a.surah - 1], saved = isBookmarked(a.surah, a.ayah);
+  const tag = verse ? 'div' : 'span';
+  return `<${tag} class="ayah ${saved ? 'bookmarked' : ''}" ${id ? `id="ayah-${a.surah}-${a.ayah}"` : ''} data-surah="${a.surah}" data-ayah="${a.ayah}" role="button" tabindex="0" aria-label="${escape(s.name)}, ayah ${a.ayah}: ${escape(displayText(a.text))}${saved ? ', bookmarked' : ''}" aria-pressed="false">${verse ? `<span class="verse-reference" dir="ltr">${a.surah}:${a.ayah}${saved ? icon('bookmark') : ''}</span><span class="verse-text">` : ''}${ayahMarkup(a, end)}${verse ? '</span>' : ''}</${tag}>`;
+}
+
+function renderPage() {
+  const page = pages[state.page - 1];
+  const names = page.sections.map(section => surahs[section.surah - 1].name).join(' · ');
+  document.title = `Page ${page.number} — Qaloon`;
+  $('#chapter-context').textContent = `Page ${page.number}`;
+  $('#surah-header').className = 'page-heading';
+  $('#surah-header').innerHTML = `<div><span class="eyebrow">THE HOLY QURAN</span><h2>Page ${page.number}</h2><p>${escape(names)}</p></div><span class="page-heading-number" aria-hidden="true">${arabicNumber(page.number)}</span>`;
+  $('#quran-content').className = 'page-content';
+  const seen = new Set();
+  $('#quran-content').innerHTML = page.sections.map(section => {
+    const s = surahs[section.surah - 1];
+    const heading = section.startsSurah ? `<div class="surah-header page-surah-header">${surahHeader(s)}</div>` : `<div class="page-continuation" dir="ltr" lang="en"><span>${escape(s.name)} <small>continued</small></span><span class="surah-arabic" lang="ar" dir="rtl">${s.arabic}</span></div>`;
+    return `<section class="page-section" aria-label="${escape(s.name)}">${heading}<div class="page-lines" lang="ar" dir="rtl">${section.lines.map(line => `<div class="mushaf-line" data-line="${line.number}">${line.fragments.map(fragment => {
+      const key = `${fragment.surah}:${fragment.ayah}`, id = !seen.has(key);
+      seen.add(key);
+      return ayahElement(fragment, { end: fragment.end, id });
+    }).join(' ')}</div>`).join('')}</div></section>`;
+  }).join('');
+  $('#page-number').value = page.number;
+  $('[data-action="previous-page"]').disabled = page.number === 1;
+  $('[data-action="next-page"]').disabled = page.number === pages.length;
+  $('#page-layout-label').textContent = 'Uthmani script · Line-by-line reading';
+  $('#page-context').textContent = `Page ${page.number} of ${pages.length}`;
+  $('#chapter-pagination').setAttribute('aria-label', 'Page navigation');
+  $('#chapter-pagination').innerHTML = `<button class="chapter-link previous" data-page="${page.number - 1}" ${page.number === 1 ? 'disabled' : ''}>${icon('arrow')}<span><small>PREVIOUS PAGE</small><strong>${page.number > 1 ? `Page ${page.number - 1}` : 'Beginning of the Quran'}</strong></span></button><span class="pagination-page-number">${page.number} <span>/ ${pages.length}</span></span><button class="chapter-link next" data-page="${page.number + 1}" ${page.number === pages.length ? 'disabled' : ''}><span><small>NEXT PAGE</small><strong>${page.number < pages.length ? `Page ${page.number + 1}` : 'End of the Quran'}</strong></span>${icon('arrow')}</button>`;
 }
 
 function updateFontControls() {
@@ -157,57 +225,92 @@ function updateResumeLabel() {
   $('#resume-label').textContent = `Your place: ${s.name} ${state.lastRead.ayah}`;
 }
 
-function recordProgress(ayah) {
+function recordProgress(ayah, surah = state.surah) {
+  const changedSurah = surah !== state.surah;
+  state.surah = surah;
   state.ayah = ayah;
-  state.lastRead = { surah: state.surah, ayah };
-  const hash = `#${state.surah}:${ayah}`;
+  if (state.mode === 'surah') state.page = surahs[surah - 1].ayahs.find(a => a.ayah === ayah).page;
+  state.lastRead = { surah, ayah, page: state.page };
+  const hash = state.mode === 'page' ? `#page/${state.page}/${surah}:${ayah}` : `#${surah}:${ayah}`;
   if (location.hash !== hash) history.replaceState(null, '', hash);
   $('#ayah-select').value = String(ayah);
+  if (changedSurah) renderSidebar();
   updateResumeLabel();
   persist();
 }
 
 function observeReading() {
-  // Only update while scrolling: opening a short surah should preserve ayah 1.
+  // Programmatic navigation must preserve its target, even when several ayahs
+  // share a line. Track viewport progress only after the reader scrolls.
   observer = new IntersectionObserver(entries => {
     const candidates = entries.filter(e => e.isIntersecting);
-    if (!candidates.length || window.scrollY < 300 || state.selected) return;
+    if (!trackingReading || !candidates.length || window.scrollY < 300 || state.selected) return;
     const nearest = candidates.sort((a, b) => Math.abs(a.boundingClientRect.top - 180) - Math.abs(b.boundingClientRect.top - 180))[0];
-    recordProgress(Number(nearest.target.dataset.ayah));
+    recordProgress(Number(nearest.target.dataset.ayah), Number(nearest.target.dataset.surah));
   }, { rootMargin: '-100px 0px -55% 0px', threshold: 0 });
   document.querySelectorAll('.ayah').forEach(a => observer.observe(a));
 }
 
 function openSurah(id, ayah = 1, scroll = true) {
-  if (!surahs[id - 1]?.ayahs.some(a => a.ayah === ayah)) return;
+  const target = surahs[id - 1]?.ayahs.find(a => a.ayah === ayah);
+  if (!target) return;
   state.surah = id;
   state.ayah = ayah;
-  history.replaceState(null, '', `#${id}:${ayah}`);
+  state.page = target.page;
   renderSidebar();
   renderReader();
   recordProgress(ayah);
   closeMenu();
-  if (scroll) requestAnimationFrame(() => ayah > 1 ? jumpToAyah(ayah) : $('#reader').scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  if (scroll) requestAnimationFrame(() => {
+    if (state.mode === 'page' && ayah === 1) $(`[data-surah-header="${id}"]`).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else if (ayah > 1) jumpToAyah(ayah, true, id);
+    else $('#reader').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
 }
 
-function jumpToAyah(ayah, select = true) {
-  const element = $(`#ayah-${ayah}`);
+function openPage(number, scroll = true, reference = null) {
+  const page = pages[number - 1];
+  if (!page) return;
+  const target = reference || pageAyahs(page)[0];
+  state.mode = 'page';
+  state.page = number;
+  state.surah = target.surah;
+  state.ayah = target.ayah;
+  renderSidebar();
+  renderReader();
+  recordProgress(target.ayah, target.surah);
+  closeMenu();
+  if (scroll) requestAnimationFrame(() => reference ? jumpToAyah(target.ayah, true, target.surah) : $('#reader').scrollIntoView({ block: 'start' }));
+}
+
+function switchMode(mode) {
+  if (mode === state.mode) return;
+  const { surah, ayah } = state;
+  state.mode = mode;
+  renderReader();
+  recordProgress(ayah, surah);
+  requestAnimationFrame(() => jumpToAyah(ayah, false, surah));
+}
+
+function jumpToAyah(ayah, select = true, surah = state.surah) {
+  const element = $(`#ayah-${surah}-${ayah}`);
   if (!element) return;
-  element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  recordProgress(ayah);
-  history.replaceState(null, '', `#${state.surah}:${ayah}`);
-  if (select) selectAyah(ayah);
+  trackingReading = false;
+  element.scrollIntoView({ behavior: select ? 'smooth' : 'instant', block: 'center' });
+  recordProgress(ayah, surah);
+  if (select) selectAyah(ayah, surah);
 }
 
-function selectAyah(ayah) {
+function selectAyah(ayah, surah = state.surah) {
   document.querySelectorAll('.ayah.selected').forEach(a => { a.classList.remove('selected'); a.setAttribute('aria-pressed', 'false'); });
-  state.selected = ayah;
-  const element = $(`#ayah-${ayah}`);
-  element.classList.add('selected');
-  element.setAttribute('aria-pressed', 'true');
-  recordProgress(ayah);
+  state.selected = { surah, ayah };
+  document.querySelectorAll(`.ayah[data-surah="${surah}"][data-ayah="${ayah}"]`).forEach(element => {
+    element.classList.add('selected');
+    element.setAttribute('aria-pressed', 'true');
+  });
+  recordProgress(ayah, surah);
   $('#ayah-actions').hidden = false;
-  $('#selected-reference').textContent = `${surahs[state.surah - 1].name} ${state.surah}:${ayah}`;
+  $('#selected-reference').textContent = `${surahs[surah - 1].name} ${surah}:${ayah}`;
   updateSaveButton();
 }
 
@@ -218,7 +321,7 @@ function deselectAyah() {
 }
 
 function updateSaveButton() {
-  const saved = isBookmarked(state.surah, state.selected);
+  const saved = isBookmarked(state.selected.surah, state.selected.ayah);
   $('#save-ayah').innerHTML = `${icon(saved ? 'check' : 'bookmark')}<span>${saved ? 'Saved' : 'Bookmark'}</span>`;
   $('#save-ayah').setAttribute('aria-label', saved ? 'Remove bookmark' : 'Bookmark ayah');
   $('#save-ayah').setAttribute('aria-pressed', String(saved));
@@ -230,7 +333,7 @@ function toggleBookmark(surah, ayah) {
   persist();
   $('#bookmark-count').textContent = state.bookmarks.length;
   $('#bookmark-count').hidden = !state.bookmarks.length;
-  if (surah === state.surah) $(`#ayah-${ayah}`)?.classList.toggle('bookmarked', !saved);
+  document.querySelectorAll(`.ayah[data-surah="${surah}"][data-ayah="${ayah}"]`).forEach(element => element.classList.toggle('bookmarked', !saved));
   if (state.selected) updateSaveButton();
   renderSidebar();
   renderBookmarks();
@@ -279,14 +382,18 @@ async function copyText(text, message) {
 }
 
 function bindEvents() {
+  for (const type of ['wheel', 'touchmove']) window.addEventListener(type, () => { trackingReading = true; }, { passive: true });
+  document.addEventListener('pointerdown', event => { if (event.target === document.documentElement) trackingReading = true; });
   document.addEventListener('click', event => {
     const button = event.target.closest('button');
     const ayah = event.target.closest('[data-ayah]');
-    if (ayah) { selectAyah(Number(ayah.dataset.ayah)); return; }
+    if (ayah) { selectAyah(Number(ayah.dataset.ayah), Number(ayah.dataset.surah)); return; }
     if (!button) return;
     if (button.dataset.close) { $(`#${button.dataset.close}`).close(); return; }
     if (button.dataset.surah) { openSurah(Number(button.dataset.surah)); return; }
     if (button.dataset.go) { openSurah(Number(button.dataset.go)); return; }
+    if (button.dataset.page) { openPage(Number(button.dataset.page)); return; }
+    if (button.dataset.mode) { switchMode(button.dataset.mode); return; }
     if (button.dataset.reference) {
       const [s, a] = button.dataset.reference.split(':').map(Number);
       document.querySelectorAll('dialog[open]').forEach(d => d.close());
@@ -321,33 +428,51 @@ function bindEvents() {
         button.setAttribute('aria-expanded', 'true'); document.body.classList.add('menu-open');
         $('#surah-search').focus(); break;
       case 'close-menu': closeMenu(); break;
-      case 'resume': openSurah(state.lastRead.surah, state.lastRead.ayah); break;
+      case 'resume':
+        if (state.mode === 'page') openPage(state.lastRead.page || surahs[state.lastRead.surah - 1].ayahs.find(a => a.ayah === state.lastRead.ayah).page, true, state.lastRead);
+        else openSurah(state.lastRead.surah, state.lastRead.ayah);
+        break;
+      case 'previous-page': openPage(state.page - 1); break;
+      case 'next-page': openPage(state.page + 1); break;
       case 'smaller': case 'larger':
         state.fontSize = Math.max(28, Math.min(52, state.fontSize + (button.dataset.action === 'larger' ? 4 : -4)));
         document.documentElement.style.setProperty('--quran-size', `${state.fontSize}px`);
         updateFontControls(); persist(); break;
-      case 'save-ayah': if (state.selected) toggleBookmark(state.surah, state.selected); break;
+      case 'save-ayah': if (state.selected) toggleBookmark(state.selected.surah, state.selected.ayah); break;
       case 'copy-ayah': {
         if (!state.selected) break;
-        const a = surahs[state.surah - 1].ayahs.find(a => a.ayah === state.selected);
-        copyText(`${displayText(a.text)}\n[${surahs[state.surah - 1].name} ${state.surah}:${state.selected} · Qālūn ʿan Nāfiʿ]`, 'Ayah copied');
+        const { surah, ayah } = state.selected;
+        const a = surahs[surah - 1].ayahs.find(a => a.ayah === ayah);
+        copyText(`${displayText(a.text)}\n[${surahs[surah - 1].name} ${surah}:${ayah} · Qālūn ʿan Nāfiʿ]`, 'Ayah copied');
         break;
       }
-      case 'share-ayah': if (state.selected) copyText(`${location.href.split('#')[0]}#${state.surah}:${state.selected}`, 'Ayah link copied'); break;
+      case 'share-ayah': if (state.selected) {
+        const { surah, ayah } = state.selected;
+        const hash = state.mode === 'page' ? `#page/${state.page}/${surah}:${ayah}` : `#${surah}:${ayah}`;
+        copyText(`${location.href.split('#')[0]}${hash}`, 'Ayah link copied');
+      } break;
       case 'deselect': deselectAyah(); break;
     }
   });
   $('#surah-search').addEventListener('input', event => { state.query = event.target.value; renderSidebar(); });
   $('#quran-search').addEventListener('input', showSearchResults);
   $('#ayah-select').addEventListener('change', event => jumpToAyah(Number(event.target.value)));
+  $('#page-form').addEventListener('submit', event => {
+    event.preventDefault();
+    const number = Number($('#page-number').value);
+    if ($('#page-form').reportValidity() && Number.isInteger(number)) openPage(number);
+  });
   document.addEventListener('keydown', event => {
+    if (['PageDown', 'PageUp', 'ArrowDown', 'ArrowUp', 'Home', 'End', ' '].includes(event.key) && !['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(document.activeElement.tagName)) trackingReading = true;
     if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) { event.preventDefault(); showDialog('search-dialog'); }
     if (event.key === 'Escape') { deselectAyah(); closeMenu(); }
-    if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-ayah]')) { event.preventDefault(); selectAyah(Number(event.target.dataset.ayah)); }
+    if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-ayah]')) { event.preventDefault(); selectAyah(Number(event.target.dataset.ayah), Number(event.target.dataset.surah)); }
   });
   window.addEventListener('hashchange', () => {
+    const pageRef = parsePageReference(location.hash, pages);
+    if (pageRef) { openPage(pageRef.page, true, pageRef); return; }
     const ref = parseReference(location.hash, surahs);
-    if (ref) openSurah(ref.surah, ref.ayah);
+    if (ref) { state.mode = 'surah'; openSurah(ref.surah, ref.ayah); }
   });
   document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('click', event => {
     const rect = dialog.getBoundingClientRect();

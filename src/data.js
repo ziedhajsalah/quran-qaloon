@@ -128,8 +128,55 @@ export function normalizeSearch(text) {
 }
 
 export function displayText(text) {
-  // The source uses literal backslash-n line hints and Latin end markers.
-  return text.replace(/\\n/g, ' ').replace(/\s*\(\d+\)\s*$/, '').trim();
+  return text.replace(/\\n|\r?\n/g, ' ').replace(/\s*\(\d+\)\s*$/, '').trim();
+}
+
+export function makePages(records) {
+  const pages = [];
+  // This edition has 15 text lines per full page. The record's page/line
+  // identify its start; embedded newlines can carry an ayah onto the next page.
+  for (const ayah of records) {
+    if (ayah.ayah === 0) continue; // The basmalah belongs in the surah header.
+    const parts = ayah.text.replace(/\s*\(\d+\)\s*$/, '').split(/\\n|\r?\n/);
+    parts.forEach((text, part) => {
+      const offset = ayah.line - 1 + part;
+      const number = ayah.page + Math.floor(offset / 15);
+      const lineNumber = offset % 15 + 1;
+      const page = pages[number - 1] ??= { number, sections: [] };
+      let section = page.sections.at(-1);
+      if (section?.surah !== ayah.surah) {
+        section = { surah: ayah.surah, startsSurah: ayah.ayah === 1 && part === 0, lines: [] };
+        page.sections.push(section);
+      }
+      let line = section.lines.at(-1);
+      if (line?.number !== lineNumber) {
+        line = { number: lineNumber, fragments: [] };
+        section.lines.push(line);
+      }
+      line.fragments.push({ surah: ayah.surah, ayah: ayah.ayah, text: text.trim(), part, end: part === parts.length - 1 });
+    });
+  }
+  return pages;
+}
+
+export function pageAyahs(page) {
+  const seen = new Set();
+  return page.sections.flatMap(section => section.lines.flatMap(line => line.fragments)).filter(fragment => {
+    const key = `${fragment.surah}:${fragment.ayah}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function parsePageReference(hash, pages) {
+  const match = /^#page\/(\d+)(?:\/(\d+):(\d+))?$/.exec(hash);
+  if (!match) return null;
+  const page = pages[Number(match[1]) - 1];
+  if (!page) return null;
+  const ayahs = pageAyahs(page);
+  const reference = match[2] ? ayahs.find(a => a.surah === Number(match[2]) && a.ayah === Number(match[3])) : ayahs[0];
+  return reference ? { page: page.number, surah: reference.surah, ayah: reference.ayah } : null;
 }
 
 export function makeSurahs(records) {
